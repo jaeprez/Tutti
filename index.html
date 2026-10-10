@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tutti</title>
+<meta name="description" content="Play several YouTube videos at once, with all of their sound.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tutti">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ECEDE9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1A1D1C" media="(prefers-color-scheme: dark)">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="preconnect" href="https://www.youtube.com">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ground: #ECEDE9;
+    --ink: #17191A;
+    --soft: #636865;
+    --line: #D0D3CD;
+    --screen: #0E100F;
+    --btn: #17191A;
+    --btn-ink: #F3F3F0;
+    --warn: #8A3B2E;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #1A1D1C;
+      --ink: #ECEDE9;
+      --soft: #9AA09D;
+      --line: #343A38;
+      --btn: #ECEDE9;
+      --btn-ink: #17191A;
+      --warn: #E0A293;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Geist", -apple-system, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input { font: inherit; color: inherit; }
+  button { background: none; border: 0; padding: 0; cursor: pointer; touch-action: manipulation; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: calc(env(safe-area-inset-top) + 18px) max(16px, env(safe-area-inset-right))
+             calc(env(safe-area-inset-bottom) + 132px) max(16px, env(safe-area-inset-left));
+  }
+
+  /* masthead */
+  .top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+  .mark { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.025em; }
+  .count { font-size: 13px; color: var(--soft); font-variant-numeric: tabular-nums; text-align: right; }
+
+  /* add a link */
+  .add { display: flex; align-items: stretch; margin-top: 22px; border-bottom: 1px solid var(--ink); }
+  .add input {
+    flex: 1; min-width: 0; height: 48px; padding: 0;
+    background: transparent; border: 0; border-radius: 0; outline: 0;
+    font-size: 16px; /* 16px keeps iOS from zooming the page on focus */
+  }
+  .add input::placeholder { color: var(--soft); opacity: 1; }
+  .add button { padding: 0 2px 0 16px; font-weight: 600; min-width: 56px; }
+  .add:focus-within { border-bottom-width: 2px; margin-bottom: -1px; }
+  .note { margin: 8px 0 0; font-size: 13px; color: var(--warn); }
+  .note:empty { display: none; }
+  .banner { margin: 16px 0 0; padding: 12px 14px; border: 1px solid var(--warn); color: var(--warn); font-size: 14px; }
+
+  .empty { margin: 34px 0 0; max-width: 30em; color: var(--soft); }
+  .empty strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: 19px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.25; }
+
+  /* layers */
+  .layers {
+    display: grid; gap: 30px 22px; margin-top: 28px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  }
+  .layer { position: relative; padding-left: 13px; min-width: 0; }
+  .layer::before {
+    content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px;
+    background: var(--hue); opacity: .28; transition: opacity .25s;
+  }
+  .layer[data-live="1"]::before { opacity: 1; }
+  .head { display: flex; align-items: center; gap: 9px; min-height: 30px; }
+  .num { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .title { flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* padding box instead of aspect-ratio: with a min-height, aspect-ratio would widen the box past the page edge */
+  .screen { position: relative; width: 100%; height: 0; padding-top: 56.25%; min-height: 200px; margin-top: 6px; background: var(--screen); overflow: hidden; }
+  .screen iframe, .screen > div { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .foot { display: flex; align-items: center; gap: 2px; margin-top: 4px; }
+  .state { flex: 1; min-width: 0; font-size: 13px; line-height: 1.3; color: var(--soft); }
+  .layer[data-live="1"] .state { color: var(--ink); }
+  .layer[data-alert="1"] .state { color: var(--warn); }
+  .state .clock { margin-left: 8px; color: var(--soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ctl { display: flex; align-items: center; }
+  .icon { width: 44px; height: 44px; display: grid; place-items: center; color: var(--ink); }
+  .icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .icon[aria-pressed="false"] { color: var(--soft); opacity: .6; }
+  .icon.small { width: 36px; height: 36px; margin-right: -9px; color: var(--soft); }
+  .icon.small svg { width: 16px; height: 16px; }
+  .level { width: 64px; margin: 0 4px 0 0; accent-color: var(--ink); }
+
+  /* transport */
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    background: var(--ground);
+    border-top: 1px solid var(--line);
+    padding: 12px max(16px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 12px) max(16px, env(safe-area-inset-left));
+  }
+  .bar-in { max-width: 1048px; margin: 0 auto; display: flex; gap: 10px; align-items: center; }
+  .main {
+    flex: 1; height: 52px; border-radius: 4px;
+    background: var(--btn); color: var(--btn-ink);
+    font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+  }
+  .main:disabled { opacity: .3; cursor: default; }
+  .side { height: 52px; padding: 0 14px 0 2px; font-weight: 500; }
+  .side:disabled { opacity: .3; cursor: default; }
+
+  /* notes and log */
+  .more { margin-top: 44px; border-top: 1px solid var(--line); }
+  details { border-bottom: 1px solid var(--line); }
+  summary { list-style: none; cursor: pointer; padding: 14px 0; font-weight: 500; display: flex; justify-content: space-between; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--soft); font-weight: 400; }
+  details[open] summary::after { content: "\2212"; }
+  details ul { margin: 0 0 16px; padding: 0 0 0 18px; color: var(--soft); max-width: 46em; }
+  details li { margin-bottom: 6px; }
+  .logbox { margin: 0 0 10px; padding: 12px; max-height: 320px; overflow: auto; background: var(--screen); color: #C9CEC9;
+            font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+  .copy { margin: 0 0 16px; height: 44px; padding: 0 16px; border: 1px solid var(--ink); border-radius: 4px; font-weight: 500; }
+
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <h1 class="mark">Tutti</h1>
+    <div class="count" id="count" aria-live="polite"></div>
+  </header>
+
+  <form class="add" id="add" autocomplete="off">
+    <label class="sr" for="link">YouTube link</label>
+    <input id="link" type="text" inputmode="url" enterkeyhint="done" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste a YouTube link">
+    <button type="submit">Add</button>
+  </form>
+  <p class="note" id="note" role="status"></p>
+  <div id="banner"></div>
+
+  <div class="empty" id="empty">
+    <strong>Every video, all at once.</strong>
+    Add two or more YouTube links, then press Play all. Each one plays with its sound, together.
+  </div>
+
+  <main class="layers" id="layers"></main>
+
+  <section class="more">
+    <details>
+      <summary>How it behaves on iPhone</summary>
+      <ul id="notes"></ul>
+    </details>
+    <details id="logwrap">
+      <summary>Session log</summary>
+      <pre class="logbox" id="log"></pre>
+      <button class="copy" id="copy" type="button">Copy log</button>
+    </details>
+  </section>
+</div>
+
+<div class="bar">
+  <div class="bar-in">
+    <button class="side" id="restart" type="button" disabled>Restart</button>
+    <button class="main" id="main" type="button" disabled>Play all</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ------------------------------------------------------------------
+   Why this is written the way it is
+
+   iOS lets only one video WITH SOUND start playing at a time: the moment
+   one starts, WebKit pauses every other audible video on the page. Muted
+   videos are exempt, and un-muting a video that is already playing does
+   not trigger the rule. So every layer here is always started the same way:
+
+       mute  ->  play  ->  wait until it is really playing  ->  unmute
+
+   The rule is re-applied whenever an audible video resumes after buffering,
+   seeking or looping, so the app also (a) mutes a layer while it buffers and
+   (b) notices when iOS has paused a layer and brings it back the same way.
+   ------------------------------------------------------------------ */
+
+const MAX_LAYERS = 6;
+const SETTLE = 400;    // ms a layer must be playing before its sound comes on
+const VERIFY = 1100;   // ms after un-muting before we call it a success
+const TICK = 700;      // ms between safety sweeps
+const STORE = 'tutti.layers.v1';
+const HUES = ['#C4902F', '#557FA3', '#6B8C57', '#B0546A', '#7A6199', '#3C8A82'];
+const S = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
+const S_NAME = { '-1': 'unstarted', 0: 'ended', 1: 'playing', 2: 'paused', 3: 'buffering', 5: 'cued' };
+const ERRORS = {
+  2: 'That link does not point to a video.',
+  5: 'This video cannot play in a browser.',
+  100: 'This video was removed or is private.',
+  101: 'Its owner blocks playback outside YouTube.',
+  150: 'Its owner blocks playback outside YouTube.',
+  153: 'YouTube refused this page. Open the app from its web address.'
+};
+
+const $ = id => document.getElementById(id);
+const layers = [];
+const t0 = performance.now();
+const now = () => performance.now();
+let apiReady = false;
+let seq = 0;
+
+/* iOS ignores per-video volume from a web page. Find out rather than guess. */
+const canSetVolume = (() => {
+  try { const v = document.createElement('video'); v.volume = 0.5; return v.volume === 0.5; }
+  catch (e) { return false; }
+})();
+
+/* ---------- log ---------- */
+const logLines = [];
+function log(L, msg) {
+  const t = ((now() - t0) / 1000).toFixed(1).padStart(6, ' ');
+  const who = L ? 'L' + (layers.indexOf(L) + 1) : '--';
+  logLines.push(t + '  ' + who + '  ' + msg);
+  if (logLines.length > 500) logLines.shift();
+  if ($('logwrap').open) paintLog();
+}
+function paintLog() {
+  const box = $('log');
+  box.textContent = logLines.join('\n');
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------- links ---------- */
+function parseTime(t) {
+  if (!t) return 0;
+  if (/^\d+$/.test(t)) return +t;
+  const m = String(t).match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/);
+  return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0;
+}
+function parseLink(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return null;
+  if (/^[\w-]{11}$/.test(s)) return { vid: s, start: 0 };
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  let u;
+  try { u = new URL(s); } catch (e) { return null; }
+  const host = u.hostname.toLowerCase().replace(/^(www\.|m\.|music\.)/, '');
+  let vid = null;
+  if (host === 'youtu.be') vid = u.pathname.slice(1).split('/')[0];
+  else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    if (u.pathname === '/watch') vid = u.searchParams.get('v');
+    else { const m = u.pathname.match(/^\/(?:embed|shorts|live|v)\/([\w-]{11})/); if (m) vid = m[1]; }
+  }
+  if (!vid || !/^[\w-]{11}$/.test(vid)) return null;
+  const hashT = (u.hash.match(/t=([\dhms]+)/) || [])[1];
+  return { vid, start: parseTime(u.searchParams.get('t') || u.searchParams.get('start') || hashT) };
+}
+
+/* ---------- storage (a convenience; the app works without it) ---------- */
+function save() {
+  try {
+    localStorage.setItem(STORE, JSON.stringify(layers.map(L => ({ v: L.vid, s: L.start, l: L.loop ? 1 : 0, m: L.wantSound ? 0 : 1 }))));
+  } catch (e) { /* private mode or blocked storage */ }
+}
+function restore() {
+  try {
+    const list = JSON.parse(localStorage.getItem(STORE) || '[]');
+    if (Array.isArray(list)) list.slice(0, MAX_LAYERS).forEach(x => {
+      if (x && /^[\w-]{11}$/.test(x.v)) addLayer({ vid: x.v, start: +x.s || 0, loop: !!x.l, sound: !x.m }, false);
+    });
+  } catch (e) { /* nothing saved */ }
+}
+
+/* ---------- icons ---------- */
+const ICON = {
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.5v13M15.5 5.5v13"/></svg>',
+  sound: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5zM15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/></svg>',
+  silent: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5zM16 9.5l5 5M21 9.5l-5 5"/></svg>',
+  loop: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3.5l3 3-3 3M20 6.5H8a4 4 0 0 0-4 4v1M7 20.5l-3-3 3-3M4 17.5h12a4 4 0 0 0 4-4v-1"/></svg>',
+  remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+};
+
+/* ---------- layers ---------- */
+function nextHue() {
+  const used = layers.map(L => L.hue);
+  return HUES.find(h => !used.includes(h)) || HUES[layers.length % HUES.length];
+}
+
+function addLayer(spec, persist) {
+  const L = {
+    key: ++seq, vid: spec.vid, start: spec.start || 0, loop: !!spec.loop,
+    wantSound: spec.sound !== false,
+    want: 'pause',          // what you asked for: 'play' or 'pause'
+    hue: nextHue(), title: '', error: '',
+    player: null, ready: false, yt: S.UNSTARTED,
+    everPlayed: false, playingSince: 0, pausedAt: -1e9,
+    cmdMuted: false, muteCmdAt: 0, lastRep: null,
+    unmuteAt: 0, unmuteGesture: false, unmuteFails: 0, unmuteStale: 0, autoOK: false, assumeAudible: false,
+    blocked: '',            // '' | 'tap' (needs Turn sound on) | 'frame' (needs a tap inside the video)
+    kickCount: 0, nextKickAt: 0, kicks: [], stuck: false, churn: false,
+    timer: 0, el: null, ui: {}
+  };
+
+  const el = document.createElement('article');
+  el.className = 'layer';
+  el.style.setProperty('--hue', L.hue);
+  el.innerHTML =
+    '<div class="head"><span class="num"></span><h2 class="title"></h2>' +
+    '<button class="icon small" type="button" data-act="remove" aria-label="Remove this layer">' + ICON.remove + '</button></div>' +
+    '<div class="screen"><div id="tutti-p' + L.key + '"></div></div>' +
+    '<div class="foot"><div class="state"><span class="what"></span><span class="clock"></span></div><div class="ctl">' +
+    (canSetVolume ? '<input class="level" type="range" min="0" max="100" value="100" aria-label="Level">' : '') +
+    '<button class="icon" type="button" data-act="loop" aria-label="Loop this layer">' + ICON.loop + '</button>' +
+    '<button class="icon" type="button" data-act="sound"></button>' +
+    '<button class="icon" type="button" data-act="play"></button>' +
+    '</div></div>';
+  L.el = el;
+  L.ui = {
+    num: el.querySelector('.num'), title: el.querySelector('.title'),
+    what: el.querySelector('.what'), clock: el.querySelector('.clock'),
+    play: el.querySelector('[data-act="play"]'), sound: el.querySelector('[data-act="sound"]'),
+    loop: el.querySelector('[data-act="loop"]'), level: el.querySelector('.level')
+  };
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]');
+    if (b) act(L, b.dataset.act);
+  });
+  if (L.ui.level) L.ui.level.addEventListener('input', () => cmd(L, 'setVolume', +L.ui.level.value));
+
+  layers.push(L);
+  $('layers').appendChild(el);
+  log(L, 'added ' + L.vid + (L.start ? ' from ' + L.start + 's' : ''));
+  if (apiReady) mount(L);
+  if (persist) save();
+  paintAll();
+  return L;
+}
+
+function mount(L) {
+  if (L.player) return;
+  const vars = { playsinline: 1, rel: 0, fs: 0, enablejsapi: 1 };
+  if (L.start) vars.start = L.start;
+  if (/^https?:$/.test(location.protocol)) vars.origin = location.origin;
+  try {
+    L.player = new YT.Player('tutti-p' + L.key, {
+      width: '100%', height: '100%', videoId: L.vid, playerVars: vars,
+      events: {
+        onReady: () => {
+          L.ready = true;
+          L.title = titleOf(L);
+          try { L.player.getIframe().setAttribute('title', 'Layer ' + (layers.indexOf(L) + 1)); } catch (e) {}
+          log(L, 'ready');
+          reconcile(L, false);
+          paintAll();
+        },
+        onStateChange: e => onState(L, e.data),
+        onError: e => {
+          L.error = ERRORS[e.data] || ('YouTube error ' + e.data + '.');
+          L.want = 'pause';
+          log(L, 'error ' + e.data + ': ' + L.error);
+          paintAll();
+        }
+      }
+    });
+  } catch (e) {
+    L.error = 'The player could not be created.';
+    log(L, 'mount failed: ' + e.message);
+  }
+}
+
+function removeLayer(L) {
+  clearTimeout(L.timer);
+  try { if (L.player && L.player.destroy) L.player.destroy(); } catch (e) {}
+  log(L, 'removed');
+  layers.splice(layers.indexOf(L), 1);
+  L.el.remove();
+  save();
+  paintAll();
+}
+
+function titleOf(L) {
+  try { const d = L.player.getVideoData(); return (d && d.title) || ''; } catch (e) { return ''; }
+}
+function cmd(L, fn, a, b) {
+  try {
+    if (L.player && typeof L.player[fn] === 'function') return L.player[fn](a, b);
+  } catch (e) { log(L, fn + ' failed: ' + e.message); }
+}
+/* Is this layer silent? The app's own last command counts first, because
+   YouTube's report of the mute state can lag or (on some devices) never arrive. */
+function isMuted(L) {
+  if (L.cmdMuted) return true;
+  if (L.assumeAudible) return false;
+  return L.lastRep === true;
+}
+function mute(L) {
+  L.assumeAudible = false; L.unmuteAt = 0; L.unmuteStale = 0;
+  L.cmdMuted = true; L.muteCmdAt = now();
+  cmd(L, 'mute');
+}
+/* Read YouTube's report and notice sound being switched on inside the video itself. */
+function observe(L) {
+  let rep = L.lastRep;
+  try { rep = !!L.player.isMuted(); } catch (e) {}
+  if (L.lastRep === true && rep === false && L.cmdMuted && now() - L.muteCmdAt > 700) {
+    L.cmdMuted = false; L.blocked = ''; L.unmuteFails = 0; L.autoOK = true;
+    log(L, 'sound turned on inside the video');
+  }
+  L.lastRep = rep;
+}
+function later(L, ms) {
+  clearTimeout(L.timer);
+  L.timer = setTimeout(() => { L.timer = 0; reconcile(L, false); }, Math.max(30, ms));
+}
+function othersAudible(L) {
+  return layers.some(o => o !== L && o.ready && o.want === 'play' && o.yt === S.PLAYING && !isMuted(o));
+}
+
+/* ---------- the engine ---------- */
+
+function onState(L, s) {
+  if (s === L.yt) return;
+  L.yt = s;
+  const t = now();
+  log(L, S_NAME[s] || ('state ' + s));
+
+  if (s === S.PLAYING) {
+    L.playingSince = t; L.everPlayed = true; L.kickCount = 0; L.stuck = false;
+    if (!L.title) L.title = titleOf(L);
+    if (L.want === 'pause') {
+      if (t - L.pausedAt < 1500) cmd(L, 'pauseVideo');           // a start that landed after you paused
+      else { L.want = 'play'; log(L, 'started from inside the video'); }
+    }
+  } else if (s === S.PAUSED && L.want === 'play') {
+    if (L.unmuteAt && t - L.unmuteAt < VERIFY + 400) {
+      // Paused right after its sound came on. Either iOS refused the unmute
+      // (no tap behind it) or another layer knocked it out at the same moment.
+      L.unmuteFails++;
+      const tapped = L.unmuteGesture;
+      L.unmuteAt = 0;
+      log(L, 'paused right after sound came on (' + L.unmuteFails + ')');
+      const limit = L.autoOK ? 4 : (tapped ? 1 : 2);
+      if (L.unmuteFails >= limit) {
+        L.autoOK = false;
+        L.blocked = tapped ? 'frame' : 'tap';
+        log(L, tapped ? 'needs a tap on the speaker inside the video' : 'needs a tap on Turn sound on');
+      }
+    } else {
+      log(L, 'paused by the system, bringing it back');
+    }
+  }
+  reconcile(L, false);
+  paintAll();
+}
+
+/* Move one layer one step closer to what was asked for. Safe to call any time. */
+function reconcile(L, gesture) {
+  if (!L.ready || L.error || !L.player) return;
+  clearTimeout(L.timer); L.timer = 0;
+  observe(L);
+  const t = now();
+  const s = L.yt;
+
+  if (L.want === 'pause') {
+    // only enforce a pause you just asked for; a later start is you, inside the video
+    const justAsked = t - L.pausedAt < 1500;
+    const neverStopped = s === S.PLAYING && L.playingSince <= L.pausedAt;
+    if ((s === S.PLAYING || s === S.BUFFERING) && (justAsked || neverStopped)) cmd(L, 'pauseVideo');
+    return;
+  }
+
+  if (s === S.ENDED) {
+    if (L.loop) { log(L, 'ended, looping'); rewind(L); }
+    else { L.want = 'pause'; paintAll(); }
+    return;
+  }
+
+  const muted = isMuted(L);
+
+  if (s === S.PLAYING) {
+    if (!L.wantSound) { if (!muted) mute(L); return; }
+
+    if (!muted) {
+      if (!L.unmuteAt) { L.blocked = ''; return; }                // already sounding
+      if (t - L.unmuteAt >= VERIFY) {                             // unmute survived
+        L.unmuteAt = 0; L.unmuteFails = 0; L.unmuteStale = 0; L.blocked = ''; L.autoOK = true;
+        log(L, 'sounding');
+        paintAll();
+      } else later(L, VERIFY - (t - L.unmuteAt));
+      return;
+    }
+
+    // playing, silent, and sound is wanted
+    if (L.blocked && !gesture) return;                            // waiting for your tap
+    if (L.unmuteAt && !gesture) {
+      if (t - L.unmuteAt < VERIFY) { later(L, VERIFY - (t - L.unmuteAt)); return; }
+      // Still reported silent after asking for sound, and it did not pause.
+      L.unmuteStale++;
+      if (L.unmuteStale > 2) {
+        L.assumeAudible = true; L.unmuteAt = 0; L.autoOK = true;
+        log(L, 'YouTube is not reporting the sound state, assuming it is on');
+        paintAll();
+        return;
+      }
+    }
+    const wait = SETTLE - (t - L.playingSince);
+    if (wait > 0 && !gesture) { later(L, wait); return; }
+    cmd(L, 'unMute');
+    L.cmdMuted = false; L.muteCmdAt = t;
+    L.unmuteAt = t; L.unmuteGesture = !!gesture;
+    if (gesture) L.blocked = '';
+    log(L, gesture ? 'sound on (your tap)' : 'sound on');
+    later(L, VERIFY);
+    return;
+  }
+
+  if (s === S.BUFFERING) {
+    // When an audible video resumes from buffering, iOS pauses the other
+    // audible ones. Muting it for the gap keeps the rest playing.
+    if (!muted && othersAudible(L)) { mute(L); log(L, 'buffering, held silent so the others keep going'); }
+    return;
+  }
+
+  // unstarted, cued or paused while it should be playing
+  kick(L, gesture);
+}
+
+/* Start (or restart) a layer silently. */
+function kick(L, gesture) {
+  const t = now();
+  if (gesture) {
+    L.kickCount = 0; L.stuck = false; L.nextKickAt = 0;
+    if (L.blocked === 'tap') { L.blocked = ''; L.unmuteFails = 0; }   // this start has a tap behind it
+  }
+  if (L.stuck) return;
+  if (t < L.nextKickAt) { later(L, L.nextKickAt - t); return; }
+  if (L.kickCount >= 6) {
+    L.stuck = true;
+    log(L, 'will not start by itself, needs a tap on its own play button');
+    paintAll();
+    return;
+  }
+  L.kicks = L.kicks.filter(k => t - k < 30000);
+  L.kicks.push(t);
+  L.churn = L.kicks.length >= 8;
+  L.kickCount++;
+  const gap = Math.max(L.churn ? 2500 : 0, Math.min(5000, 1500 * Math.pow(2, L.kickCount - 1)));
+  L.nextKickAt = t + gap;
+  mute(L);
+  cmd(L, 'playVideo');
+  log(L, (L.everPlayed ? 'restarting silently' : 'starting silently') + (gesture ? ' (your tap)' : ''));
+  later(L, gap + 30);
+}
+
+function rewind(L) {
+  mute(L);
+  cmd(L, 'seekTo', L.start, true);
+  cmd(L, 'playVideo');
+  L.kickCount = 0; L.stuck = false; L.nextKickAt = now() + 1500;
+  later(L, 1600);
+}
+
+/* ---------- your controls ---------- */
+
+function act(L, what) {
+  if (what === 'remove') return removeLayer(L);
+  if (what === 'loop') { L.loop = !L.loop; save(); return paintAll(); }
+  if (what === 'sound') {
+    L.wantSound = !L.wantSound;
+    log(L, L.wantSound ? 'sound wanted' : 'muted by you');
+    if (L.wantSound) { L.unmuteFails = 0; reconcile(L, true); } else mute(L);
+    save();
+    return paintAll();
+  }
+  if (what === 'play') {
+    if (L.error) return;
+    if (L.want === 'play') { L.want = 'pause'; L.pausedAt = now(); log(L, 'paused by you'); reconcile(L, false); }
+    else {
+      L.want = 'play'; log(L, 'play (your tap)');
+      if (L.yt === S.ENDED) rewind(L); else reconcile(L, true);
+      holdScreen(true);
+    }
+    paintAll();
+  }
+}
+
+function mainMode() {
+  if (!layers.some(L => !L.error)) return 'none';
+  if (layers.some(L => L.want === 'play' && L.wantSound && L.blocked === 'tap')) return 'sound';
+  if (layers.some(L => L.want === 'play')) return 'pause';
+  return 'play';
+}
+
+$('main').addEventListener('click', () => {
+  const mode = mainMode();
+  if (mode === 'play') {
+    log(null, 'Play all');
+    layers.forEach(L => { if (!L.error) L.want = 'play'; });
+    layers.forEach(L => { if (L.error) return; if (L.yt === S.ENDED) rewind(L); else reconcile(L, true); });
+    holdScreen(true);
+  } else if (mode === 'pause') {
+    log(null, 'Pause all');
+    const t = now();
+    layers.forEach(L => { L.want = 'pause'; L.pausedAt = t; reconcile(L, false); });
+    holdScreen(false);
+  } else if (mode === 'sound') {
+    log(null, 'Turn sound on');
+    layers.forEach(L => { if (L.want === 'play' && L.wantSound && L.blocked) { L.unmuteFails = 0; reconcile(L, true); } });
+  }
+  paintAll();
+});
+
+$('restart').addEventListener('click', () => {
+  log(null, 'Restart');
+  layers.forEach(L => {
+    if (L.error || !L.ready) return;
+    L.want = 'play';
+    rewind(L);
+  });
+  holdScreen(true);
+  paintAll();
+});
+
+$('add').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = $('link');
+  const parts = input.value.split(/[\s,]+/).filter(Boolean);
+  if (!parts.length) return;
+  let added = 0, bad = 0, full = false;
+  parts.forEach(p => {
+    const spec = parseLink(p);
+    if (!spec) { bad++; return; }
+    if (layers.length >= MAX_LAYERS) { full = true; return; }
+    addLayer(spec, true); added++;
+  });
+  $('note').textContent = full ? 'Six layers is the limit. Remove one to add another.'
+    : bad ? (added ? 'One of those was not a YouTube link.' : 'That does not look like a YouTube link.') : '';
+  if (added) { input.value = ''; input.blur(); }
+});
+
+$('copy').addEventListener('click', async () => {
+  const text = envLine() + '\n' + logLines.join('\n');
+  try { await navigator.clipboard.writeText(text); $('copy').textContent = 'Copied'; }
+  catch (e) {
+    const r = document.createRange(); r.selectNodeContents($('log'));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    $('copy').textContent = 'Selected. Copy it from the menu';
+  }
+  setTimeout(() => { $('copy').textContent = 'Copy log'; }, 2200);
+});
+$('logwrap').addEventListener('toggle', () => { if ($('logwrap').open) paintLog(); });
+
+/* ---------- screen wake lock: a locked phone stops every video ---------- */
+let wake = null;
+async function holdScreen(on) {
+  try {
+    if (on) {
+      if (!wake && navigator.wakeLock) {
+        wake = await navigator.wakeLock.request('screen');
+        wake.addEventListener('release', () => { wake = null; });
+      }
+    } else if (wake) { const w = wake; wake = null; await w.release(); }
+  } catch (e) { /* not available, or refused */ }
+}
+
+/* ---------- painting ---------- */
+
+function clock(sec) {
+  if (!isFinite(sec) || sec < 0) return '';
+  sec = Math.floor(sec);
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+}
+
+function describe(L) {
+  if (L.error) return { text: L.error, alert: true };
+  if (!apiReady) return { text: 'Connecting to YouTube' };
+  if (!L.ready) return { text: 'Loading' };
+  if (L.want === 'pause') return { text: L.yt === S.ENDED ? 'Ended' : L.everPlayed ? 'Paused' : 'Ready' };
+  if (L.stuck) return { text: 'Tap play inside the video', alert: true };
+  if (L.yt === S.PLAYING) {
+    if (!isMuted(L)) return { text: 'Sounding', live: true };
+    if (!L.wantSound) return { text: 'Playing, muted' };
+    if (L.blocked === 'tap') return { text: 'Silent. Press Turn sound on', alert: true };
+    if (L.blocked === 'frame') return { text: 'Silent. Tap the speaker inside the video', alert: true };
+    return { text: 'Sound coming on' };
+  }
+  if (L.yt === S.BUFFERING) return { text: 'Buffering' };
+  if (L.churn) return { text: 'iOS keeps pausing this one. Bringing it back' };
+  return { text: L.everPlayed ? 'Bringing it back' : 'Starting' };
+}
+
+function paintAll() {
+  let sounding = 0, playing = 0;
+  layers.forEach((L, i) => {
+    const d = describe(L);
+    if (d.live) sounding++;
+    if (L.want === 'play') playing++;
+    L.el.dataset.live = d.live ? '1' : '0';
+    L.el.dataset.alert = d.alert ? '1' : '0';
+    L.ui.num.textContent = i + 1;
+    L.ui.title.textContent = L.title || 'Layer ' + (i + 1);
+    if (L.ui.what.textContent !== d.text) L.ui.what.textContent = d.text;
+
+    const on = L.want === 'play';
+    const pk = on ? 'pause' : 'play';
+    if (L.ui.play.dataset.k !== pk) {
+      L.ui.play.dataset.k = pk;
+      L.ui.play.innerHTML = on ? ICON.pause : ICON.play;
+      L.ui.play.setAttribute('aria-label', on ? 'Pause this layer' : 'Play this layer');
+    }
+    const sk = L.wantSound ? 'sound' : 'silent';
+    if (L.ui.sound.dataset.k !== sk) {
+      L.ui.sound.dataset.k = sk;
+      L.ui.sound.innerHTML = ICON[sk];
+      L.ui.sound.setAttribute('aria-label', L.wantSound ? 'Mute this layer' : 'Turn this layer’s sound on');
+    }
+    L.ui.sound.setAttribute('aria-pressed', L.wantSound ? 'true' : 'false');
+    L.ui.loop.setAttribute('aria-pressed', L.loop ? 'true' : 'false');
+  });
+
+  const n = layers.length;
+  $('empty').hidden = n > 0;
+  $('count').textContent = !n ? '' : playing ? sounding + ' of ' + n + ' sounding' : n + (n === 1 ? ' layer' : ' layers');
+
+  const mode = mainMode();
+  const main = $('main');
+  main.disabled = mode === 'none' || !apiReady;
+  main.textContent = mode === 'sound' ? 'Turn sound on' : mode === 'pause' ? 'Pause all' : 'Play all';
+  $('restart').disabled = main.disabled;
+}
+
+function paintClocks() {
+  layers.forEach(L => {
+    let text = '';
+    if (L.ready && !L.error && L.everPlayed) {
+      try {
+        text = clock(L.player.getCurrentTime());
+      } catch (e) {}
+    }
+    if (L.ui.clock.textContent !== text) L.ui.clock.textContent = text;
+  });
+}
+
+/* ---------- safety sweep: catches anything an event missed ---------- */
+function sweep() {
+  layers.forEach(L => {
+    if (!L.ready || L.error) return;
+    let s;
+    try { s = L.player.getPlayerState(); } catch (e) { return; }
+    observe(L);
+    if (typeof s === 'number' && s !== L.yt) onState(L, s);
+    else if (!L.timer) reconcile(L, false);
+  });
+  paintAll();
+  paintClocks();
+}
+setInterval(sweep, TICK);
+
+document.addEventListener('visibilitychange', () => {
+  log(null, document.hidden ? 'app went to the background' : 'app is back in front');
+  if (document.hidden) return;
+  layers.forEach(L => { L.nextKickAt = 0; L.kickCount = 0; L.stuck = false; });
+  sweep();
+  if (layers.some(L => L.want === 'play')) holdScreen(true);
+});
+
+/* ---------- start-up ---------- */
+function envLine() {
+  return 'Tutti log. ' + navigator.userAgent + ' | ' + location.protocol + ' | home-screen app: ' +
+    (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches) +
+    ' | per-video volume: ' + canSetVolume;
+}
+
+function writeNotes() {
+  const notes = [
+    'Each video starts silent and its sound comes on about a second later. iOS stops every other video the moment one starts with sound, so they are never started that way.',
+    'If iOS pauses a layer anyway, it comes back by itself, usually within a second.',
+    'Pause with the buttons here. A layer you pause inside its own video looks like an iOS pause and is started again.',
+    'Locking the phone or leaving Safari stops everything. It picks up again when you come back.'
+  ];
+  if (!canSetVolume) notes.splice(3, 0, 'iOS does not let a web page set volume per video. Use the phone’s volume buttons; a layer can only be on or muted.');
+  $('notes').innerHTML = notes.map(n => '<li>' + n + '</li>').join('');
+}
+
+function boot() {
+  writeNotes();
+  log(null, envLine());
+  if (location.protocol === 'file:') {
+    $('banner').innerHTML = '<p class="banner">Opened as a file, YouTube will refuse to play (error 153). Put this file on your site and open it from its web address.</p>';
+    log(null, 'opened from file://');
+  }
+  restore();
+  paintAll();
+
+  window.onYouTubeIframeAPIReady = () => {
+    apiReady = true;
+    $('banner').querySelectorAll('.waiting').forEach(n => n.remove());
+    log(null, 'YouTube player code loaded');
+    layers.forEach(mount);
+    paintAll();
+  };
+  if (window.YT && window.YT.Player) return window.onYouTubeIframeAPIReady();
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  tag.onerror = () => {
+    $('banner').innerHTML = '<p class="banner">YouTube could not be reached. Check the connection and reload.</p>';
+    log(null, 'could not load the YouTube player code');
+  };
+  document.head.appendChild(tag);
+  setTimeout(() => {
+    if (!apiReady && !$('banner').firstChild) {
+      $('banner').innerHTML = '<p class="banner waiting">Still waiting for YouTube. A content blocker can cause this. Reload to try again.</p>';
+    }
+  }, 10000);
+}
+
+window.tutti = { layers, logLines };   // for inspecting from the console
+boot();
+})();
+</script>
+</body>
+</html>
